@@ -11,3 +11,14 @@ TaskLens is a client-only, offline-first PWA that turns spoken thoughts and phot
 5. Turn on Airplane Mode and repeat the capture, review, save, edit, complete, and delete flows.
 
 The app includes gallery and sample-capture fallbacks when browser permissions or device hardware are unavailable.
+
+## Deploy to Vercel
+
+Import this folder as a Vercel project with:
+
+- Framework preset: **Vite**
+- Build command: `npm run build`
+- Output directory: `dist`
+- Install command: `npm install`
+
+The included `vercel.json` keeps SPA routes working and applies short cache lifetimes to the HTML, manifest, and service worker while caching fingerprinted assets immutably.

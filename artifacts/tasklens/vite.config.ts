@@ -1,41 +1,23 @@
-import path from 'path';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
-
-const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    'PORT environment variable is required but was not provided.',
-  );
-}
-
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    'BASE_PATH environment variable is required but was not provided.',
-  );
-}
+const root = path.dirname(fileURLToPath(import.meta.url));
+const port = Number(process.env.PORT || 5173);
+const base = process.env.BASE_PATH || '/';
 
 export default defineConfig({
-  base: basePath,
+  root,
+  base,
   plugins: [
     react(),
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/icon-192.svg', 'icons/icon-512.svg'],
+      includeAssets: ['favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'TaskLens',
         short_name: 'TaskLens',
@@ -44,56 +26,38 @@ export default defineConfig({
         background_color: '#14213D',
         display: 'standalone',
         start_url: '/',
+        scope: '/',
+        shortcuts: [
+          { name: 'Voice capture', short_name: 'Voice', url: '/voice', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
+          { name: 'Camera capture', short_name: 'Camera', url: '/camera', icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
+        ],
         icons: [
-          { src: '/icons/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
-          { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' },
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
       },
       workbox: {
         navigateFallback: '/',
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
+        maximumFileSizeToCacheInBytes: 25 * 1024 * 1024,
       },
     }),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== 'production' &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import('@replit/vite-plugin-cartographer').then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, '..'),
-            }),
-          ),
-          await import('@replit/vite-plugin-dev-banner').then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
   ],
   resolve: {
     alias: {
-      '@': path.resolve(import.meta.dirname, 'src'),
-      '@assets': path.resolve(
-        import.meta.dirname,
-        '..',
-        '..',
-        'attached_assets',
-      ),
+      '@': path.resolve(root, 'src'),
     },
     dedupe: ['react', 'react-dom'],
   },
-  root: path.resolve(import.meta.dirname),
   build: {
-    outDir: path.resolve(import.meta.dirname, 'dist/public'),
+    outDir: path.resolve(root, 'dist'),
     emptyOutDir: true,
   },
   server: {
     port,
-    strictPort: true,
+    strictPort: false,
     host: '0.0.0.0',
     allowedHosts: true,
-    fs: {
-      strict: true,
-    },
   },
   preview: {
     port,

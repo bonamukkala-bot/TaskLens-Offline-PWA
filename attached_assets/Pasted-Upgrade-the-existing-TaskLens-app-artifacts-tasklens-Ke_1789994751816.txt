@@ -1,0 +1,45 @@
+Upgrade the existing TaskLens app (artifacts/tasklens). Keep it CLIENT-ONLY: no backend, no database server, no auth, no API keys, no telemetry. DO NOT break any existing working flow. After each numbered stage below, run the TypeScript typecheck and a production build, and fix errors before continuing.
+
+STAGE 0 — Make the project portable (highest priority)
+- The app must build as a STANDALONE project outside this workspace, because it will be downloaded as a zip and deployed on Vercel.
+- In artifacts/tasklens/package.json, replace every "catalog:" or "workspace:*" dependency with a real pinned semver version. Ensure `npm install && npm run build` would work in that folder alone.
+- Make tsconfig.json standalone (no "extends" to a workspace base file). Copy any needed settings inline.
+- Remove any Replit-specific plugins or config from vite.config.ts that would fail outside Replit (e.g. runtime-error-overlay, cartographer, dev banner plugins), and remove any required Replit env vars such as PORT or BASE_PATH. Use sensible defaults: base "/", dev server on port 5173.
+- Add vercel.json with: SPA rewrite of all non-file routes to /index.html, and headers: Cache-Control "public, max-age=0, must-revalidate" for /sw.js and /index.html and /manifest.webmanifest, and immutable long-cache for /assets/*.
+- Add a proper .gitignore (node_modules, dist, .env, .vercel, .DS_Store) and a root-level README section "Deploy to Vercel" (Framework: Vite, Build: npm run build, Output: dist).
+- Add package.json scripts: dev, build, preview, typecheck.
+
+STAGE 1 — Reliability of the core loop (this decides the demo)
+- Model warm-up: once setup is complete, preload the LLM, Whisper and Tesseract worker in the background on app start (idle time) so the first live capture is fast. Show a subtle "Warming up on-device AI…" then "Ready" state. Never block the UI.
+- Robust downloads: for each model download add retry with backoff, clear per-model error messages, and a "Resume / Retry" button. Before downloading, check navigator.storage.estimate() and warn if free space is under 3 GB.
+- "Verify offline readiness" button in Settings: actually checks that the LLM weights, Whisper files and Tesseract core/worker/language data are all present in Cache Storage / IndexedDB, and shows a green/red checklist. The header badge "Airplane-mode ready" must ONLY show when this verification passes.
+- Guarantee Tesseract works offline: download the worker, core wasm and eng.traineddata at setup time and load them from the local cache (or bundle in /public), never from a CDN at runtime.
+- Improve extraction accuracy for small models: add 4 few-shot examples to the extraction prompt (relative dates, multiple tasks in one sentence, priority words, no-deadline case). Add a post-processing pass that de-duplicates near-identical titles, trims filler words ("please", "remind me to"), capitalises the first letter, and rejects tasks with title shorter than 3 characters.
+- Voice: auto-stop after ~2 seconds of silence (based on the analyser level) with a visible "auto-stop" toggle; add a max recording length of 60 seconds.
+- Process the audio and OCR text strictly in workers where possible so the UI stays at 60fps during "Understanding (on-device)…".
+
+STAGE 2 — Judge-visible "proof" features (these map to the scoring rubric)
+- "Under the hood" panel (collapsible, on the Review screen and in a new Capture History screen): for each capture show source type, raw text, model used, backend (webgpu or fallback), and a timing breakdown: STT or OCR ms, LLM ms, total ms. Store these in capture_sessions (add fields stt_ms, ocr_ms, llm_ms).
+- "Network proof" chip: use a PerformanceObserver on resource entries plus fetch/XHR wrappers to count network requests made DURING a capture (from record/shutter tap to review screen). Show "0 network requests during this capture" in green. Show the real count if not zero. Also show the live Online/Offline indicator prominently.
+- Capture History screen (accessible from Home header): list of past capture sessions with type, time taken, number of tasks produced, and the option to re-open the tasks.
+- "Demo mode" toggle in Settings: enlarges font sizes, hides secondary chrome, keeps the screen awake (Screen Wake Lock API), and shows a tiny discreet timer for the 60–90 second demo. Also add a "Load demo tasks" button that seeds 3 realistic sample tasks (one voice, one camera, one manual) and a "Clear demo tasks" button.
+
+STAGE 3 — Productivity depth
+- Home grouping: sections Overdue, Today, Tomorrow, This week, Later, No date, Completed (collapsible), with counts. Overdue tasks get a red accent.
+- Undo: after delete or complete, show a 5-second "Undo" snackbar.
+- Quick voice edit-free flow: after a successful extraction with a single high-confidence task, show a compact "Save" bar so a demo needs only one tap.
+- Export / share: Home menu with "Copy as checklist" (plain text with [ ] items), "Share" via the Web Share API when available, "Download .ics" (calendar file for tasks that have due dates, all-day events), and "Export JSON" / "Import JSON" for backup.
+- Search stays; add a "Show only voice / only camera" source filter.
+- Optional language setting: English (default, Whisper tiny.en) or "Multilingual" (Whisper tiny multilingual) for Hindi/Telugu speech, downloaded only if the user chooses it. Keep English as the default so nothing changes for the main demo.
+
+STAGE 4 — Polish and layout
+- Responsive layout: on wide screens (laptop, for the Office Kit screen-mirror moment) show a centered phone-width column with max-width 480px and a subtle background, so it looks intentional when displayed on a big screen.
+- Smooth transitions between screens, skeleton loaders where lists load, and tasteful micro-interactions (FAB press, save success check animation). Respect prefers-reduced-motion.
+- Fix accessibility: labels on all controls, visible focus rings, 44px tap targets, 4.5:1 contrast in both themes.
+- PWA: add maskable icons (PNG 192 and 512 generated from the SVG, plus an apple-touch-icon), manifest shortcuts for "Voice capture" and "Camera capture", display "standalone", and an in-app "Install app" button using the beforeinstallprompt event. Show an "Update available" toast when a new service worker is waiting.
+- Set <meta name="theme-color">, a proper <title>, and description.
+
+FINAL
+- Make sure the app works with no console errors, `npm run build` passes, and typecheck passes.
+- Update README.md with: features, architecture in five lines, "How to test on a phone", "Airplane Mode test checklist", and "Deploy to Vercel".
+- List every file created or changed and confirm the standalone build works.
