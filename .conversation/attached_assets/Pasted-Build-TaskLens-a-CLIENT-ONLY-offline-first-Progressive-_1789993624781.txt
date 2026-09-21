@@ -1,0 +1,68 @@
+Build "TaskLens", a CLIENT-ONLY offline-first Progressive Web App. Stack: React + Vite + TypeScript + Tailwind CSS. There must be NO backend, NO database server, NO auth, NO API keys, NO server routes. Everything runs in the browser. If you are tempted to add any of these, don't.
+
+PRODUCT
+Speak a thought or photograph a note/whiteboard, and the app turns it into structured tasks (title, due_date, priority) entirely on-device. Track: Productivity. It is demoed live on an Android phone in Chrome (an iQOO phone), often in Airplane Mode. Mobile-first, one-thumb use.
+
+TECH CHOICES (use exactly these)
+- On-device LLM: @mlc-ai/web-llm (WebGPU). Default model "gemma-2-2b-it-q4f16_1-MLC". Selectable alternatives in Settings: "Phi-3-mini-4k-instruct-q4f16_1-MLC" and "Llama-3.2-1B-Instruct-q4f16_1-MLC". Run the engine in a Web Worker (WebWorkerMLCEngine) so the UI never freezes.
+- On-device speech-to-text: @huggingface/transformers (transformers.js), pipeline "automatic-speech-recognition" with a Whisper tiny model (Xenova/whisper-tiny.en, quantised). Decode the recorded audio to 16 kHz mono Float32Array with the Web Audio API before passing it in. Run in a Web Worker.
+- On-device OCR: tesseract.js, English.
+- Storage: Dexie.js (IndexedDB).
+- PWA: vite-plugin-pwa (Workbox), installable manifest, offline app-shell caching. App name "TaskLens", short name "TaskLens", theme colour #14213D, generate simple placeholder 192px and 512px icons (teal #0EA5A0 lens/checkmark glyph on navy).
+- Vite config: server.host = true, server.allowedHosts = true, preview.allowedHosts = true.
+- No custom web fonts. System font stack only.
+
+DESIGN
+- Primary navy #14213D, accent teal #0EA5A0 (used ONLY for the capture button and active states). Light and dark mode, default dark.
+- Large type, high contrast (4.5:1 minimum), tap targets at least 44px, minimal chrome. It must be readable by a judge glancing at the phone from across a table.
+- A persistent small badge in the header showing status: green dot "On-device · offline-ready" when models are ready, amber "Setting up" otherwise, and a live "Offline" or "Online" indicator from window online/offline events.
+- Every processing state uses a spinner PLUS a text label, never a blank screen.
+- Designed empty states (no tasks yet, no speech detected, blurry photo), never blank.
+
+SCREENS (5)
+1. Home / Task Dashboard: header with app name and badge. Scrollable task list. Each card shows title, due-date chip, priority chip (low grey, medium amber, high red), and a source icon (mic / camera / pencil for manual). Swipe right = mark complete, swipe left = delete (with confirm); also give a visible checkbox and a delete button as non-swipe fallbacks. Filters: by priority, by due date sort, show/hide completed. A single large teal floating action button bottom-right opens a bottom sheet with two options: Voice and Camera (plus a small "Add manually" link).
+2. Voice Capture: near-full-screen record button (tap to start, tap to stop), live waveform driven by the real microphone level via AnalyserNode (must be genuinely live, not fake), and a timer. After stopping, show status labels in sequence: "Transcribing (on-device)…" then "Understanding (on-device)…". Handle: mic permission denied (inline explanation and how to enable it in browser settings), no speech detected (friendly empty state, back to Home).
+3. Camera Capture: live viewfinder via getUserMedia (facingMode environment) with a soft framing-guide rectangle and a shutter button bottom-centre. Also include a "Choose from gallery" button using <input type="file" accept="image/*" capture="environment"> as a fallback if getUserMedia fails. After the shutter: downscale the image to max 1600px on the long edge, convert to greyscale with a contrast boost on a canvas, then show "Reading (on-device)…" then "Understanding (on-device)…". If OCR text is near-empty (under 5 meaningful characters), prompt to retake and do NOT call the LLM.
+4. Review / Task Detail: one editable card per extracted task: title (text field), due date (date picker), priority (3-segment control low/medium/high). Prominent "Save" and a clearly separate "Discard". Nothing is ever saved silently; the AI only proposes. This screen is also reached by tapping any existing task to edit it. Show the raw transcript / OCR text in a collapsed "What the AI heard/read" section.
+5. Model Status / Settings: first-launch setup, shown automatically until models are ready. Button "Download on-device AI (~2 GB, one-time)" with separate progress bars for LLM, speech model and OCR data, plus a combined status. Framed as "one-time offline setup, not a per-use cloud call". When done, show an "Airplane-mode ready" badge. Also show: active inference backend (webgpu / fallback), model names and versions, model selector, storage used (navigator.storage.estimate), a "Run self-test" button (runs a canned sentence through the LLM and shows result and timing), a "Clear all data" button, and a "Request persistent storage" call (navigator.storage.persist()) made on first launch.
+
+CORE MODULES (separate files under src/lib and src/workers)
+- model-manager.ts: ensureModelsLoaded(); detects navigator.gpu and requestAdapter(); reports progress; sets settings.inference_backend to "webgpu" or "fallback"; verifies caches so the badge is accurate.
+- audio-capture.ts: startRecording() / stopRecording(): Blob, exposes an analyser for the waveform.
+- stt.ts: transcribe(audioBlob): Promise<string>. Loads Whisper once and reuses it.
+- camera-capture.ts: capturePhoto(): Blob with the pre-processing described above.
+- ocr.ts: extractText(imageBlob): Promise<string> via tesseract.js. Reuse one worker.
+- task-extractor.ts: extractTasks(rawText): Promise<ExtractedTask[]>.
+- db.ts: Dexie wrapper with saveTask / listTasks / updateTask / deleteTask, saveCaptureSession, getSettings / updateSettings.
+
+TASK EXTRACTION CONTRACT (critical)
+- System prompt to the LLM: "You extract to-do tasks from text. Reply with ONLY a JSON array, no markdown, no explanation. Each item: {\"title\": string, \"due_date\": string in YYYY-MM-DD or null, \"priority\": \"low\"|\"medium\"|\"high\"}. Resolve relative dates like tomorrow / next Friday using today's date, which is {TODAY_ISO} ({WEEKDAY}). Words like urgent, asap, important, must => high. If no deadline is stated use null. Never invent tasks that are not in the text. Keep titles short and imperative." Inject the real current date at call time. Use temperature 0.1 and max_tokens 300.
+- Strip any ``` fences, then JSON.parse, then validate the shape with a small validator (title non-empty string; due_date matches YYYY-MM-DD or null; priority in the allowed set, default "medium"). Also sanity-check due_date is a real date.
+- If the model output fails parsing or validation, OR the LLM is unavailable (no WebGPU or model not loaded), fall back to a deterministic rule-based extractor: split the text on sentence/line boundaries and "and"/"then"; parse the words today, tomorrow, day names, "next week", "in N days", and simple dd/mm or month-name dates; parse priority from words like urgent/asap/important/high/low. Worst case, return one task whose title is the raw text, with due_date null and priority medium. The flow must NEVER dead-end and must never crash.
+- Always route results to the Review screen. Never auto-save.
+
+DATA MODEL (Dexie)
+tasks: id (uuid), title, due_date (ISO string | null), priority, source_type ("voice"|"camera"|"manual"), source_session_id (nullable), completed (boolean), created_at, updated_at.
+capture_sessions: id (uuid), type ("voice"|"camera"), raw_text, model_used, processing_time_ms, created_at.
+settings (single row): models_ready, model_versions, inference_backend, selected_llm.
+One capture session can produce many tasks.
+
+BEHAVIOUR REQUIREMENTS
+- After first-time setup, all core flows must work with zero network (Airplane Mode). Cache app shell, model weights (WebLLM Cache Storage), transformers.js model files, and the tesseract.js worker/core/language data. If the Tesseract data would otherwise be fetched from a CDN at runtime, download it during setup and cache it (or bundle it as static assets in /public) so OCR works offline.
+- Never call any external API at runtime after setup. No analytics, no telemetry.
+- Lazy-load heavy libraries so first paint is fast.
+- Record processing_time_ms for every capture and show it subtly on the Review screen ("Processed on-device in 4.2s").
+- Haptic tick (navigator.vibrate) on successful save where supported.
+- Handle every permission and API failure with a friendly message on screen (not just the console). Include a React error boundary.
+- Home shows an onboarding empty state: "No tasks yet. Tap + and say something like 'Submit the DBMS assignment tomorrow, it's urgent'."
+
+BUILD IN THIS ORDER, and make sure each stage works before starting the next
+1. Project scaffold, Tailwind, PWA config, Dexie schema, routing between the 5 screens.
+2. Model manager and Model Status screen with real progress bars and the WebGPU check.
+3. Voice flow: recording, live waveform, Whisper transcription.
+4. Camera flow: viewfinder, pre-processing, Tesseract OCR.
+5. Task extractor with validation, fallback and the rule-based parser, then the Review screen and saving to Dexie.
+6. Home dashboard: list, complete, edit, delete, filters, swipe gestures.
+7. Polish: badges, empty states, haptics, error boundary, icons.
+
+Finally: add a README.md with a short section "How to test on a phone" (open the deployed URL directly in Chrome on Android, not the preview pane; install via Add to Home Screen; then test in Airplane Mode). Do not add any features beyond this spec. When finished, list every file you created and confirm the app runs and builds without errors.

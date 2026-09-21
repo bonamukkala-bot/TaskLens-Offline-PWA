@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "TaskLens"
+description = "A client-only offline-first Progressive Web App that turns spoken thoughts and photographed notes into structured tasks entirely on-device."
+version = "1.0.0"
+id = "artifacts/tasklens"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19614
+
+[services.development]
+run = "pnpm --filter @workspace/tasklens run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/tasklens", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/tasklens/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19614"
+BASE_PATH = "/"

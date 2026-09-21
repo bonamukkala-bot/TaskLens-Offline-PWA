@@ -1,0 +1,1 @@
+- [Offline ML loading](offline-ml-loading.md) — keep browser ML imports lazy and worker-scoped, with a deterministic fallback so airplane-mode flows never dead-end.
