@@ -40,11 +40,14 @@ export type Settings = {
   };
   persistent_storage_requested: boolean;
   theme: 'dark' | 'light';
+  due_date_alerts_enabled: boolean;
+  last_reminder_check_at: string | null;
 };
 
 export type ExtractedTask = {
   title: string;
   due_date: string | null;
+  due_time?: string | null;
   priority: Priority;
 };
 
@@ -61,4 +64,6 @@ export const DEFAULT_SETTINGS: Settings = {
   setup_progress: { llm: 0, speech: 0, ocr: 0 },
   persistent_storage_requested: false,
   theme: 'dark',
+  due_date_alerts_enabled: false,
+  last_reminder_check_at: null,
 };

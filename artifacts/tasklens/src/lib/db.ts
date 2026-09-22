@@ -50,7 +50,7 @@ export async function saveCaptureSession(session: CaptureSession): Promise<strin
 
 export async function getSettings(): Promise<Settings> {
   const existing = await db.settings.get('default');
-  if (existing) return existing;
+  if (existing) return { ...DEFAULT_SETTINGS, ...existing };
   await db.settings.put(DEFAULT_SETTINGS);
   return DEFAULT_SETTINGS;
 }
